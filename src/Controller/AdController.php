@@ -10,6 +10,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Annotation\Route;
+use Symfony\Component\ExpressionLanguage\Expression;
+use Symfony\Component\Security\Http\Attribute\IsGranted;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 
 class AdController extends AbstractController
@@ -39,6 +41,7 @@ class AdController extends AbstractController
      * @return Response
      */
     #[Route("/ads/new", name:"ads_create")]
+    #[IsGranted('ROLE_USER')]
     public function create(Request $request, EntityManagerInterface $manager): Response
     {
 
@@ -59,6 +62,7 @@ class AdController extends AbstractController
                 $manager->persist($image);
             }
 
+            $ad->setAuthor($this->getUser());
 
             // je persiste mon objet Ad
             $manager->persist($ad);
@@ -91,6 +95,11 @@ class AdController extends AbstractController
      * @return Response
      */
     #[Route("/ads/{slug}/edit", name:"ads_edit")]
+    #[IsGranted(
+        attribute: new Expression('(user === subject and is_granted("ROLE_USER")) or is_granted("ROLE_ADMIN")'),
+        subject: new Expression('args["ad"].getAuthor()'),
+        message: "Cette annonce ne vous appartient pas, vous ne pouvez pas la modifier"
+    )]
     public function edit(Request $request, EntityManagerInterface $manager, Ad $ad): Response
     {
         $form = $this->createForm(AnnonceType::class, $ad);
@@ -125,6 +134,33 @@ class AdController extends AbstractController
             "myForm" => $form->createView()
         ]);
     }
+
+    /**
+     * Permet de supprimer une annonce
+     *
+     * @param Ad $ad
+     * @param EntityManagerInterface $manager
+     * @return Response
+     */
+    #[Route("/ads/{slug}/delete", name:"ads_delete")]
+    #[IsGranted(
+        attribute: new Expression('(user === subject and is_granted("ROLE_USER")) or is_granted("ROLE_ADMIN")'),
+        subject: new Expression('args["ad"].getAuthor()'),
+        message: "Cette annonce ne vous appartient pas, vous ne pouvez pas la supprimer"
+    )]
+    public function delete(Ad $ad, EntityManagerInterface $manager): Response
+    {
+        $this->addFlash(
+            'success',
+            "L'annonce <strong>".$ad->getTitle()."</strong> a bien été supprimée"
+        );
+
+        $manager->remove($ad);
+        $manager->flush();
+
+        return $this->redirectToRoute('ads_index');
+    }
+
 
     /**
      * Permet d'afficher une annonce 
